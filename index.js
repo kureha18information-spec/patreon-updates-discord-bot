@@ -1,11 +1,6 @@
 const axios = require("axios");
 const fs = require("fs");
 
-console.log("ENV CHECK START");
-console.log("DISCORD_BOT_TOKEN:", process.env.DISCORD_BOT_TOKEN ? "OK" : "NG");
-console.log("CHANNEL_ID:", process.env.CHANNEL_ID);
-console.log("PATREON_ACCESS_TOKEN:", process.env.PATREON_ACCESS_TOKEN ? "OK" : "NG");
-
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const PATREON_TOKEN = process.env.PATREON_ACCESS_TOKEN;
@@ -30,17 +25,33 @@ async function sendDiscord(message) {
   );
 }
 
-async function run() {
+async function getCampaignId() {
   const res = await axios.get(
-    "https://www.patreon.com/api/oauth2/v2/posts?sort=-published_at&page[count]=10",
+    "https://www.patreon.com/api/oauth2/v2/campaigns",
     {
       headers: {
         Authorization: `Bearer ${PATREON_TOKEN}`,
       },
     }
   );
+  return res.data.data[0].id;
+}
 
-  const posts = res.data.data.reverse();
+async function getPosts(campaignId) {
+  const res = await axios.get(
+    `https://www.patreon.com/api/oauth2/v2/campaigns/${campaignId}/posts?sort=-published_at&page[count]=10`,
+    {
+      headers: {
+        Authorization: `Bearer ${PATREON_TOKEN}`,
+      },
+    }
+  );
+  return res.data.data.reverse();
+}
+
+async function run() {
+  const campaignId = await getCampaignId();
+  const posts = await getPosts(campaignId);
 
   for (const post of posts) {
     if (sentPosts.includes(post.id)) continue;
@@ -55,11 +66,9 @@ async function run() {
   fs.writeFileSync(SAVE_FILE, JSON.stringify(sentPosts));
 }
 
-// ★ ここが重要：エラーを必ず表示させる
 run().catch(err => {
   console.error("FATAL ERROR");
-  console.error("message:", err.message);
-  console.error("status:", err.response?.status);
-  console.error("data:", err.response?.data);
+  console.error(err.response?.status);
+  console.error(err.response?.data);
   process.exit(1);
 });
