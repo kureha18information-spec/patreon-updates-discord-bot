@@ -1,3 +1,7 @@
+console.log("ENV CHECK");
+console.log("DISCORD_BOT_TOKEN exists:", !!process.env.DISCORD_BOT_TOKEN);
+console.log("CHANNEL_ID:", process.env.CHANNEL_ID);
+console.log("PATREON_ACCESS_TOKEN exists:", !!process.env.PATREON_ACCESS_TOKEN);
 const axios = require("axios");
 const fs = require("fs");
 
