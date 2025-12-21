@@ -1,44 +1,21 @@
-name: Patreon to Discord
+name: Patreon Check
+
 on:
   schedule:
-    - cron: '*/30 * * * *' # 30分ごとに実行
-  workflow_dispatch: # 手動実行ボタンを有効化
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
 
 jobs:
-  build:
+  run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # 前回の送信済みリスト(sent_posts.json)を復元する
-      - name: Restore sent_posts cache
-        uses: actions/cache/restore@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          path: sent_posts.json
-          key: patreon-posts-${{ github.run_id }}
-          restore-keys: |
-            patreon-posts-
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install axios
-
-      - name: Run script
-        run: node index.js
+          node-version: 18
+      - run: npm install
+      - run: node index.js
         env:
-          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
           PATREON_ACCESS_TOKEN: ${{ secrets.PATREON_ACCESS_TOKEN }}
-
-      # 今回の送信済みリストを保存して次回の実行に引き継ぐ
-      - name: Save sent_posts cache
-        uses: actions/cache/save@v4
-        if: always()
-        with:
-          path: sent_posts.json
-          key: patreon-posts-${{ github.run_id }}
