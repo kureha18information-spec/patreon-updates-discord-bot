@@ -55,13 +55,12 @@ async function getCampaignId() {
   return campaign.id;
 }
 
-// ---------- fetch posts with cursor ----------
-async function fetchPosts(campaignId, cursor = null, count = 100) {
+// ---------- fetch posts ----------
+async function fetchPosts(campaignId, count) {
   const params = {
     "sort": "-published_at",
     "page[count]": count
   };
-  if (cursor) params["page[cursor]"] = cursor;
 
   const res = await axios.get(
     `https://www.patreon.com/api/oauth2/v2/campaigns/${campaignId}/posts`,
@@ -71,10 +70,7 @@ async function fetchPosts(campaignId, cursor = null, count = 100) {
     }
   );
 
-  return {
-    posts: res.data.data,
-    nextCursor: res.data.meta?.pagination?.cursors?.next || null
-  };
+  return res.data.data;
 }
 
 // ---------- main ----------
@@ -82,13 +78,12 @@ async function run() {
   const campaignId = await getCampaignId();
 
   let fetchCount = 100; // 100 → 200 → 300 → … 無制限
-  let allPosts = [];
   let newPosts = [];
 
   while (true) {
-    const { posts, nextCursor } = await fetchPosts(campaignId, null, fetchCount);
+    console.log(`Fetching ${fetchCount} posts...`);
 
-    allPosts = posts;
+    const posts = await fetchPosts(campaignId, fetchCount);
 
     // 新規投稿だけ抽出
     newPosts = posts.filter(p => {
@@ -102,8 +97,8 @@ async function run() {
     // 新規が0 → 次は +100 件
     fetchCount += 100;
 
-    // 次ページがない場合は終了（APIが返せる最大まで取った）
-    if (!nextCursor) break;
+    // API が返せる最大まで取ったら終了
+    if (posts.length < fetchCount - 100) break;
   }
 
   // 古い → 新しい順に並べ替え
