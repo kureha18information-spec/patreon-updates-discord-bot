@@ -55,31 +55,77 @@ async function getCampaignId() {
   return campaign.id;
 }
 
-// ---------- Patreon: get posts ----------
-async function getPosts(campaignId) {
+// ---------- fetch 100 posts with cursor ----------
+async function fetchPosts(campaignId, cursor = null) {
+  const params = {
+    "sort": "-published_at",
+    "page[count]": 100
+  };
+  if (cursor) params["page[cursor]"] = cursor;
+
   const res = await axios.get(
-    `https://www.patreon.com/api/oauth2/v2/campaigns/${campaignId}/posts?sort=-published_at&page[count]=100`,
-    { headers: { Authorization: `Bearer ${PATREON_TOKEN}` } }
+    `https://www.patreon.com/api/oauth2/v2/campaigns/${campaignId}/posts`,
+    {
+      headers: { Authorization: `Bearer ${PATREON_TOKEN}` },
+      params
+    }
   );
 
-  return res.data.data;
+  return {
+    posts: res.data.data,
+    nextCursor: res.data.meta?.pagination?.cursors?.next || null
+  };
 }
 
 // ---------- main ----------
 async function run() {
   const campaignId = await getCampaignId();
-  const posts = await getPosts(campaignId);
+
+  let allPosts = [];
+  let cursor = null;
+
+  while (true) {
+    // 100件取得
+    const { posts, nextCursor } = await fetchPosts(campaignId, cursor);
+    if (!posts.length) break;
+
+    allPosts.push(...posts);
+
+    // 100件中、既知IDが何件あるか
+    const knownCount = posts.filter(p => {
+      const url = p.attributes.url;
+      const id = url.replace("https://www.patreon.com/posts/", "");
+      return sent.includes(id);
+    }).length;
+
+    // 全部既知 → 次の100件へ
+    if (knownCount === posts.length) {
+      if (!nextCursor) break;
+      cursor = nextCursor;
+      continue;
+    }
+
+    // 一部既知 → 既知件数ぶん次ページを追加取得
+    if (knownCount > 0) {
+      if (!nextCursor) break;
+      const extra = await fetchPosts(campaignId, nextCursor);
+      allPosts.push(...extra.posts);
+    }
+
+    break;
+  }
 
   // 古い → 新しい順に並べ替え
-  posts.sort(
+  allPosts.sort(
     (a, b) =>
       new Date(a.attributes.published_at) -
       new Date(b.attributes.published_at)
   );
 
-  for (const p of posts) {
-    const url = p.attributes.url; // ← 正しいURL（スラッグ対応）
-    const id = url.replace("https://www.patreon.com/posts/", ""); // ← /posts/ の後ろ全部をIDにする
+  // 新規投稿だけ処理
+  for (const p of allPosts) {
+    const url = p.attributes.url;
+    const id = url.replace("https://www.patreon.com/posts/", "");
 
     if (sent.includes(id)) continue;
 
