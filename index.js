@@ -55,58 +55,52 @@ async function getCampaignId() {
   return campaign.id;
 }
 
-// ---------- fetch posts ----------
-async function fetchPosts(campaignId, count) {
-  const params = {
-    "sort": "-published_at",
-    "page[count]": count
-  };
+// ---------- fetch ALL posts (auto pagination) ----------
+async function fetchAllPosts(campaignId) {
+  let cursor = null;
+  let all = [];
 
-  const res = await axios.get(
-    `https://www.patreon.com/api/oauth2/v2/campaigns/${campaignId}/posts`,
-    {
-      headers: { Authorization: `Bearer ${PATREON_TOKEN}` },
-      params
-    }
-  );
+  while (true) {
+    const params = {
+      "sort": "-published_at",
+      "page[count]": 100
+    };
+    if (cursor) params["page[cursor]"] = cursor;
 
-  return res.data.data;
+    const res = await axios.get(
+      `https://www.patreon.com/api/oauth2/v2/campaigns/${campaignId}/posts`,
+      {
+        headers: { Authorization: `Bearer ${PATREON_TOKEN}` },
+        params
+      }
+    );
+
+    all = all.concat(res.data.data);
+
+    const next = res.data.meta?.pagination?.cursors?.next;
+    if (!next) break;
+
+    cursor = next;
+  }
+
+  return all;
 }
 
 // ---------- main ----------
 async function run() {
   const campaignId = await getCampaignId();
 
-  let fetchCount = 100; // 100 → 200 → 300 → … 無制限
-  let newPosts = [];
+  console.log("Fetching ALL posts...");
+  const posts = await fetchAllPosts(campaignId);
 
-  while (true) {
-    console.log(`Fetching ${fetchCount} posts...`);
+  // 新規投稿だけ抽出（順番は気にしない）
+  const newPosts = posts.filter(p => {
+    const url = p.attributes.url;
+    const id = url.replace("https://www.patreon.com/posts/", "");
+    return !sent.includes(id);
+  });
 
-    const posts = await fetchPosts(campaignId, fetchCount);
-
-    // 新規投稿だけ抽出
-    newPosts = posts.filter(p => {
-      const url = p.attributes.url;
-      const id = url.replace("https://www.patreon.com/posts/", "");
-      return !sent.includes(id);
-    });
-
-    if (newPosts.length > 0) break; // 新規があれば終了
-
-    // 新規が0 → 次は +100 件
-    fetchCount += 100;
-
-    // API が返せる最大まで取ったら終了
-    if (posts.length < fetchCount - 100) break;
-  }
-
-  // 古い → 新しい順に並べ替え
-  newPosts.sort(
-    (a, b) =>
-      new Date(a.attributes.published_at) -
-      new Date(b.attributes.published_at)
-  );
+  console.log(`New posts found: ${newPosts.length}`);
 
   // 新規投稿だけ Discord に送る
   for (const p of newPosts) {
