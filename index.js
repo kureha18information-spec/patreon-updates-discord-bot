@@ -55,11 +55,11 @@ async function getCampaignId() {
   return campaign.id;
 }
 
-// ---------- fetch 100 posts with cursor ----------
-async function fetchPosts(campaignId, cursor = null) {
+// ---------- fetch posts with cursor ----------
+async function fetchPosts(campaignId, cursor = null, count = 100) {
   const params = {
     "sort": "-published_at",
-    "page[count]": 100
+    "page[count]": count
   };
   if (cursor) params["page[cursor]"] = cursor;
 
@@ -81,60 +81,48 @@ async function fetchPosts(campaignId, cursor = null) {
 async function run() {
   const campaignId = await getCampaignId();
 
+  let fetchCount = 100; // 100 → 200 → 300 → … 無制限
   let allPosts = [];
-  let cursor = null;
+  let newPosts = [];
 
   while (true) {
-    // 100件取得
-    const { posts, nextCursor } = await fetchPosts(campaignId, cursor);
-    if (!posts.length) break;
+    const { posts, nextCursor } = await fetchPosts(campaignId, null, fetchCount);
 
-    allPosts.push(...posts);
+    allPosts = posts;
 
-    // 100件中、既知IDが何件あるか
-    const knownCount = posts.filter(p => {
+    // 新規投稿だけ抽出
+    newPosts = posts.filter(p => {
       const url = p.attributes.url;
       const id = url.replace("https://www.patreon.com/posts/", "");
-      return sent.includes(id);
-    }).length;
+      return !sent.includes(id);
+    });
 
-    // 全部既知 → 次の100件へ
-    if (knownCount === posts.length) {
-      if (!nextCursor) break;
-      cursor = nextCursor;
-      continue;
-    }
+    if (newPosts.length > 0) break; // 新規があれば終了
 
-    // 一部既知 → 既知件数ぶん次ページを追加取得
-    if (knownCount > 0) {
-      if (!nextCursor) break;
-      const extra = await fetchPosts(campaignId, nextCursor);
-      allPosts.push(...extra.posts);
-    }
+    // 新規が0 → 次は +100 件
+    fetchCount += 100;
 
-    break;
+    // 次ページがない場合は終了（APIが返せる最大まで取った）
+    if (!nextCursor) break;
   }
 
   // 古い → 新しい順に並べ替え
-  allPosts.sort(
+  newPosts.sort(
     (a, b) =>
       new Date(a.attributes.published_at) -
       new Date(b.attributes.published_at)
   );
 
-  // 新規投稿だけ処理
-  for (const p of allPosts) {
+  // 新規投稿だけ Discord に送る
+  for (const p of newPosts) {
     const url = p.attributes.url;
     const id = url.replace("https://www.patreon.com/posts/", "");
-
-    if (sent.includes(id)) continue;
-
     const title = p.attributes.title || "New Patreon Post";
 
     await sendDiscord(`🆕 **${title}**\n${url}`);
 
     sent.push(id);
-    save(); // 逐次保存
+    save();
   }
 }
 
