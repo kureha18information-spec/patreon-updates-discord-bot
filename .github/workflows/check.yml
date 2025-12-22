@@ -23,7 +23,7 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install axios
+        run: npm install
 
       - name: Run bot
         run: node index.js
